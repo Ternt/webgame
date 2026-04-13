@@ -1,0 +1,77 @@
+name: builds
+
+on: 
+  push:
+    paths-ignore:
+      - '**.md'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+
+env:
+  EM_VERSION: '5.0.1'
+  EM_SDK_VERSION: '5.0.5'
+  EM_SDK_CACHE_PATH: 'emsdk-cache'
+
+jobs:
+  build-web:
+    runs-on: windows-2025
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+
+      - name: emsdk-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.EM_SDK_CACHE_PATH }}
+          key: ${{ env.EM_VERSION }}-${{ runner.os }}
+
+      - name: emsdk-setup
+        uses: emscripten-core/setup-emsdk@v15
+        with:
+          version: ${{ env.EM_VERSION }}
+          emsdk-version: ${{ env.EM_SDK_VERSION }}
+          actions-cache-folder: ${{ env.EM_SDK_CACHE_PATH }}
+
+      - name: verify
+        run: emcc -v
+
+      - name: build (emcc)
+        shell: cmd
+        run: call build.bat debug game wasm build_web
+
+      - name: save build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: build/web/
+
+  deploy-web:
+    needs: [build-web]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: download build output
+        uses: actions/download-artifact@v4
+        with:
+          name: web
+          path: build/web/
+
+      - name: log build dirs
+        run: |
+          ls build/
+          ls build/web/
+          ls build/web/static
+
+      - name: upload-artifacts
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: "4.81.1"
+          command: |
+            r2 bucket list
+            r2 object put webgame/index.html --ct=text/html --f=build/web/index.html --s Standard --remote
+            r2 object put webgame/index.css --ct=text/css --f=build/web/static/index.css --s Standard --remote
+            r2 object put webgame/index.js --ct=text/javascript --f=build/web/static/index.js --s Standard --remote
+            r2 object put webgame/game.wasm --ct=application/wasm --f=build/web/static/game.wasm --s Standard --remote
