@@ -12,6 +12,7 @@ env:
   EM_VERSION: '5.0.1'
   EM_SDK_VERSION: '5.0.5'
   EM_SDK_CACHE_PATH: 'emsdk-cache'
+  WRANGLER_VERSION: '4.81.1'
 
 jobs:
   build-web:
@@ -24,7 +25,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.EM_SDK_CACHE_PATH }}
-          key: ${{ env.EM_VERSION }}-${{ runner.os }}
+          key: EMSDK-${{ env.EM_VERSION }}-${{ runner.os }}
 
       - name: emsdk-setup
         uses: emscripten-core/setup-emsdk@v15
@@ -32,9 +33,6 @@ jobs:
           version: ${{ env.EM_VERSION }}
           emsdk-version: ${{ env.EM_SDK_VERSION }}
           actions-cache-folder: ${{ env.EM_SDK_CACHE_PATH }}
-
-      - name: verify
-        run: emcc -v
 
       - name: build (emcc)
         shell: cmd
@@ -57,18 +55,18 @@ jobs:
           name: web
           path: build/web/
 
-      - name: log build dirs
-        run: |
-          ls build/
-          ls build/web/
-          ls build/web/static
+      - name: wrangler-cache
+        uses: actions/cache@v4
+        with:
+          path: '~/.npm'
+          key: WRANGLER-${{ env.WRANGLER_VERSION }}-${{ runner.os }}
 
       - name: upload-artifacts
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          wranglerVersion: "4.81.1"
+          wranglerVersion: ${{ env.WRANGLER_VERSION }}
           command: |
             r2 bucket list
             r2 object put webgame/index.html --ct=text/html --f=build/web/index.html --s Standard --remote
